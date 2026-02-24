@@ -1,28 +1,42 @@
 import os
 import json
-from langchain_pinecone import PineconeVectorStore
-from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_groq import ChatGroq
 from pinecone import Pinecone
+from langchain_groq import ChatGroq
 from dotenv import load_dotenv
 
 load_dotenv()
 
 # Initialize Pinecone client
-pc    = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
-index = pc.Index(os.getenv("PINECONE_INDEX"))
-
-# Load the same embedding model used during ingestion
-embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
-
-# Connect LangChain to the Pinecone index
-db = PineconeVectorStore(index=index, embedding=embeddings)
+pc         = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
+index_name = os.getenv("PINECONE_INDEX")
+index      = pc.Index(index_name)
 
 # Load the Groq LLM
 llm = ChatGroq(
     api_key=os.getenv("GROQ_API_KEY"),
     model_name="llama-3.3-70b-versatile",
 )
+
+def embed_query(text: str) -> list:
+    """Embed a query using Pinecone's inference API."""
+    response = pc.inference.embed(
+        model="multilingual-e5-large",
+        inputs=[text],
+        parameters={"input_type": "query"}
+    )
+    return response[0].values
+
+def retrieve_relevant_chunks(query: str, k: int = 5) -> list:
+    """Search Pinecone for the most relevant knowledge base chunks."""
+    query_embedding = embed_query(query)
+    results = index.query(
+        vector=query_embedding,
+        top_k=k,
+        include_metadata=True
+    )
+    # Extract the text from the metadata of each match
+    chunks = [match.metadata.get("text", "") for match in results.matches]
+    return chunks
 
 def extract_symptoms(transcript: str) -> str:
     """Use the LLM to extract key symptoms and medical terms from the transcript."""
@@ -37,15 +51,10 @@ Transcript:
     response = llm.invoke(prompt)
     return response.content.strip()
 
-def retrieve_relevant_chunks(query: str, k: int = 5) -> list:
-    """Search Pinecone for the most relevant knowledge base chunks."""
-    results = db.similarity_search(query, k=k)
-    return results
-
 def generate_suggestions(transcript: str, chunks: list) -> list:
     """Use the LLM to generate structured suggestions based on the transcript and retrieved chunks."""
 
-    context = "\n\n".join([doc.page_content for doc in chunks])
+    context = "\n\n".join(chunks)
 
     prompt = f"""
 You are a clinical decision support assistant helping a doctor during a consultation.
@@ -95,7 +104,7 @@ JSON array:
 def generate_discharge_content(transcript: str, chunks: list) -> dict:
     """Generate discharge summary content based on the transcript and retrieved chunks."""
 
-    context = "\n\n".join([doc.page_content for doc in chunks])
+    context = "\n\n".join(chunks)
 
     prompt = f"""You are a clinical decision support assistant helping a doctor write a discharge summary.
 Based on the patient transcript and the medical knowledge provided, generate a structured discharge summary.
