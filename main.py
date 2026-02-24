@@ -3,21 +3,21 @@ from fastapi.middleware.cors import CORSMiddleware
 from db.database import Base, engine
 from routers import audio, rag, sessions, feedback
 
-# Create the database tables when the server starts
+# Create all DB tables on startup
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="MedAssist API", version="1.0.0")
 
-# Allow the React frontend on port 5173 to communicate with this API
+# Allow all origins for now — will lock down to Vercel URL after frontend deployment
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Connect each router to the app under the /api prefix
+# Register all routers
 app.include_router(audio.router,    prefix="/api", tags=["Audio"])
 app.include_router(rag.router,      prefix="/api", tags=["RAG"])
 app.include_router(sessions.router, prefix="/api", tags=["Sessions"])

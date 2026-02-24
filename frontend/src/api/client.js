@@ -2,7 +2,7 @@ import axios from 'axios'
 
 // All requests go to the FastAPI backend via the Vite proxy
 const client = axios.create({
-  baseURL: '/api',
+  baseURL: import.meta.env.VITE_API_URL || '/api',
   headers: {
     'Content-Type': 'application/json',
   },
